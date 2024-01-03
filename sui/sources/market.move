@@ -231,19 +231,19 @@ module market::market {
     }
 
 
-    ///Adjusting the price of NFT
-    public entry fun modify_price(
-        market: &mut Marketplace,
-        inscription_id: ID,
-        last_price: u64,
-        price: u64,
-        ctx: &TxContext
-    ) {
-        let listing = borrow_mut_listing(&mut market.listing, last_price, inscription_id);
-        assert!(listing.seller == sender(ctx), ENotAuthOperator);
-        listing.price = price;
-        market_event::modify_price_event(inscription_id, sender(ctx), price);
-    }
+    // ///Adjusting the price of NFT
+    // public entry fun modify_price(
+    //     market: &mut Marketplace,
+    //     inscription_id: ID,
+    //     last_price: u64,
+    //     price: u64,
+    //     ctx: &TxContext
+    // ) {
+    //     let listing = borrow_mut_listing(&mut market.listing, last_price, inscription_id);
+    //     assert!(listing.seller == sender(ctx), ENotAuthOperator);
+    //     listing.price = price;
+    //     market_event::modify_price_event(inscription_id, sender(ctx), price);
+    // }
 
     ///Cancel the listing of inscription
     public entry fun delist(
