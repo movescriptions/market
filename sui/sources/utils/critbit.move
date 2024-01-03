@@ -1,6 +1,6 @@
 /// forked by deepbook
 
-module smartinscription::critbit {
+module market::critbit {
 
     use sui::tx_context::TxContext;
     use sui::table::{Self, Table};

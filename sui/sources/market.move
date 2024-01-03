@@ -1,6 +1,6 @@
 // Copyright 2019-2022 SwiftNFT Systems
 // SPDX-License-Identifier: Apache-2.0
-module smartinscription::market {
+module market::market {
     use std::ascii;
     use std::ascii::{String, string};
     use sui::object::{Self, ID, UID};
