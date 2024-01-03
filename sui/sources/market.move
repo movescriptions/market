@@ -14,11 +14,13 @@ module market::market {
     use std::vector;
     use sui::balance;
     use sui::balance::Balance;
+    use sui::clock::timestamp_ms;
     use smartinscription::movescription::{Movescription, tick, amount};
-    // use sui::clock::{Clock};
-    use smartinscription::critbit::{CritbitTree, find_leaf};
-    use smartinscription::critbit;
-    use smartinscription::market_event;
+    use sui::clock::{Clock};
+    use sui::dynamic_field;
+    use market::critbit::{CritbitTree, find_leaf};
+    use market::critbit;
+    use market::market_event;
     use sui::table;
     use sui::table::Table;
     use sui::table_vec;
@@ -37,9 +39,8 @@ module market::market {
     const EDoesNotExist: u64 = 1;
     const ENotAuthOperator: u64 = 2;
     const EInputCoin: u64 = 3;
-    const ETickLength: u64 = 4;
-    const EWrongMarket: u64 = 5;
-    const ErrorTickLengthInvaid: u64 = 6;
+    const EWrongMarket: u64 = 4;
+    const ErrorTickLengthInvaid: u64 = 5;
 
 
     /// listing info in the market
@@ -57,6 +58,17 @@ module market::market {
         amt: u64
     }
 
+    #[allow(unused_field)]
+    struct Bid has key, store {
+        id: UID,
+        /// the bidder address
+        bidder: address,
+        /// the bidder price
+        balance: Balance<SUI>,
+        /// the bidder want amt
+        amt: u64
+    }
+
     ///Record some important information of the market
     struct Marketplace has key {
         id: UID,
@@ -70,16 +82,18 @@ module market::market {
         fee: u64,
         /// listing cribit tree
         listing: CritbitTree<vector<Listing>>,
+        /// bid cribit tree
+        bid: CritbitTree<vector<Bid>>,
     }
 
-    // struct TradeInfo has key, store {
-    //     id: UID,
-    //     tick: String,
-    //     timestamp: u64,
-    //     yesterday_balance: u64,
-    //     today_balance: u64,
-    //     total_balance: u64,
-    // }
+    struct TradeInfo has key, store {
+        id: UID,
+        tick: String,
+        timestamp: u64,
+        yesterday_volume: u64,
+        today_volume: u64,
+        total_volume: u64,
+    }
 
     struct AdminCap has key, store {
         id: UID,
@@ -95,7 +109,7 @@ module market::market {
     public entry fun createMarket(
         tick: vector<u8>,
         market_house: &mut MarketplaceHouse,
-        // clock: &Clock,
+        clock: &Clock,
         ctx: &mut TxContext){
         let tick_str: String = string(tick);
         let tick_len: u64 = ascii::length(&tick_str);
@@ -106,20 +120,21 @@ module market::market {
             version: VERSION,
             balance: balance::zero<SUI>(),
             fee: 0,
-            listing: critbit::new(ctx)
+            listing: critbit::new(ctx),
+            bid: critbit::new(ctx)
         };
-        // let trade_info = TradeInfo{
-        //     id: object::new(ctx),
-        //     tick: utf8(tick),
-        //     timestamp: timestamp_ms(clock),
-        //     yesterday_balance: 0,
-        //     today_balance: 0,
-        //     total_balance: 0
-        // };
+        let trade_info = TradeInfo{
+            id: object::new(ctx),
+            tick: string(tick),
+            timestamp: timestamp_ms(clock),
+            yesterday_volume: 0,
+            today_volume: 0,
+            total_volume: 0
+        };
         table::add(&mut market_house.market_info, string(tick), object::id(&market));
         table_vec::push_back(&mut market_house.markets, string(tick));
         market_event::market_created_event(object::id(&market), tx_context::sender(ctx));
-        // dynamic_field::add(&mut market.id, 0u8, trade_info);
+        dynamic_field::add(&mut market.id, 0u8, trade_info);
         transfer::share_object(market);
     }
 
@@ -131,17 +146,18 @@ module market::market {
             version: VERSION,
             balance: balance::zero<SUI>(),
             fee: 0,
-            listing: critbit::new(ctx)
+            listing: critbit::new(ctx),
+            bid: critbit::new(ctx)
         };
         let market_info = table::new<String, ID>(ctx);
-        // let trade_info = TradeInfo{
-        //     id: object::new(ctx),
-        //     tick: utf8(b"MOVE"),
-        //     timestamp: 0,
-        //     yesterday_balance: 0,
-        //     today_balance: 0,
-        //     total_balance: 0
-        // };
+        let trade_info = TradeInfo{
+            id: object::new(ctx),
+            tick: string(b"MOVE"),
+            timestamp: 0,
+            yesterday_volume: 0,
+            today_volume: 0,
+            total_volume: 0
+        };
         table::add(&mut market_info, string(b"MOVE"), object::id(&market));
 
         let market_house = MarketplaceHouse {
@@ -153,7 +169,7 @@ module market::market {
         let publisher = package::claim(otw, ctx);
         transfer::public_transfer(publisher, sender(ctx));
         market_event::market_created_event(object::id(&market), tx_context::sender(ctx));
-        // dynamic_field::add(&mut market.id, 0u8, trade_info);
+        dynamic_field::add(&mut market.id, 0u8, trade_info);
         transfer::share_object(market);
         transfer::share_object(market_house);
         transfer::public_transfer(AdminCap { id: object::new(ctx) }, tx_context::sender(ctx));
@@ -237,18 +253,18 @@ module market::market {
         inscription_id: ID,
         paid: &mut Coin<SUI>,
         last_price: u64,
-        // clock: &Clock,
+        clock: &Clock,
         ctx: &mut TxContext
     ): Movescription {
-        // let trade_info = dynamic_field::borrow_mut<u8, TradeInfo>(&mut market.id, 0u8);
-        // trade_info.total_balance = trade_info.total_balance + coin::value(paid);
-        // if (timestamp_ms(clock) - trade_info.timestamp > 86400000) {
-        //     trade_info.today_balance = coin::value(paid);
-        //     trade_info.yesterday_balance = trade_info.today_balance;
-        //     trade_info.timestamp = timestamp_ms(clock);
-        // }else {
-        //     trade_info.today_balance = trade_info.today_balance + coin::value(paid);
-        // };
+        let trade_info = dynamic_field::borrow_mut<u8, TradeInfo>(&mut market.id, 0u8);
+        trade_info.total_volume = trade_info.total_volume + coin::value(paid);
+        if (timestamp_ms(clock) - trade_info.timestamp > 86400000) {
+            trade_info.today_volume = coin::value(paid);
+            trade_info.yesterday_volume = trade_info.today_volume;
+            trade_info.timestamp = timestamp_ms(clock);
+        }else {
+            trade_info.today_volume = trade_info.today_volume + coin::value(paid);
+        };
         assert!(market.version == VERSION, EWrongVersion);
         let Listing{
             id,
