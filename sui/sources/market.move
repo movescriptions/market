@@ -15,7 +15,7 @@ module market::market {
     use sui::balance;
     use sui::balance::Balance;
     use sui::clock::timestamp_ms;
-    use smartinscription::movescription::{Movescription, tick, amount};
+    use smartinscription::movescription::{Movescription, tick, amount, inject_sui};
     use sui::clock::{Clock};
     use sui::dynamic_field;
     use market::critbit::{CritbitTree, find_leaf};
@@ -34,6 +34,15 @@ module market::market {
 
     const MAX_TICK_LENGTH: u64 = 32;
     const MIN_TICK_LENGTH: u64 = 4;
+
+    const BURN_FEE_RATIO: u64 = 125;
+    const COMMUNITY_FEE_RATIO: u64 = 250;
+    const LOCK_FEE_RATIO: u64 = 125;
+    const MARKET_FEE_RATIO: u64 = 500;
+
+    const TRADE_FEE_BASE_RATIO: u64 = 1000;
+    const BASE_MARKET_FEE: u64 = 20;
+
 
     const EWrongVersion: u64 = 0;
     const EDoesNotExist: u64 = 1;
@@ -78,6 +87,10 @@ module market::market {
         version: u64,
         /// marketplace fee collected by marketplace
         balance: Balance<SUI>,
+        /// Amount used for repurchasing flooring
+        burn_balance: Balance<SUI>,
+        /// Community balance
+        community_balance: Balance<SUI>,
         /// marketplace fee  of the marketplace
         fee: u64,
         /// listing cribit tree
@@ -89,6 +102,9 @@ module market::market {
     struct TradeInfo has key, store {
         id: UID,
         tick: String,
+        burn_ratio: u64,
+        community_ratio: u64,
+        lock_ratio: u64,
         timestamp: u64,
         yesterday_volume: u64,
         today_volume: u64,
@@ -119,13 +135,18 @@ module market::market {
             tick: string(tick),
             version: VERSION,
             balance: balance::zero<SUI>(),
-            fee: 0,
+            burn_balance: balance::zero<SUI>(),
+            community_balance: balance::zero<SUI>(),
+            fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
             bid: critbit::new(ctx)
         };
         let trade_info = TradeInfo{
             id: object::new(ctx),
             tick: string(tick),
+            burn_ratio: BURN_FEE_RATIO,
+            community_ratio: COMMUNITY_FEE_RATIO,
+            lock_ratio: LOCK_FEE_RATIO,
             timestamp: timestamp_ms(clock),
             yesterday_volume: 0,
             today_volume: 0,
@@ -145,7 +166,9 @@ module market::market {
             tick: string(b"MOVE"),
             version: VERSION,
             balance: balance::zero<SUI>(),
-            fee: 0,
+            burn_balance: balance::zero<SUI>(),
+            community_balance: balance::zero<SUI>(),
+            fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
             bid: critbit::new(ctx)
         };
@@ -153,6 +176,9 @@ module market::market {
         let trade_info = TradeInfo{
             id: object::new(ctx),
             tick: string(b"MOVE"),
+            burn_ratio: BURN_FEE_RATIO,
+            community_ratio: COMMUNITY_FEE_RATIO,
+            lock_ratio: LOCK_FEE_RATIO,
             timestamp: 0,
             yesterday_volume: 0,
             today_volume: 0,
@@ -277,17 +303,28 @@ module market::market {
         object::delete(id);
         assert!(coin::value(paid) >= price, EInputCoin);
 
-        let market_fee = price * market.fee / 10000;
-        let surplus = price - market_fee;
-
+        let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
+        let surplus = price - trade_fee;
         assert!(surplus > 0, EInputCoin);
+        let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
+        let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
+        let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
+        let lock_fee = trade_fee * trade_info.lock_ratio / TRADE_FEE_BASE_RATIO;
 
         pay::split_and_transfer(paid, surplus, seller, ctx);
         let market_value = coin::split<SUI>(paid, market_fee, ctx);
+        let burn_value = coin::split<SUI>(paid, burn_fee, ctx);
+        let community_value = coin::split<SUI>(paid, community_fee, ctx);
+
+        let lock_value = coin::split<SUI>(paid, lock_fee, ctx);
+
         balance::join(&mut market.balance, coin::into_balance(market_value));
+        balance::join(&mut market.burn_balance, coin::into_balance(burn_value));
+        balance::join(&mut market.community_balance, coin::into_balance(community_value));
 
 
         let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
+        inject_sui(&mut inscription, lock_value);
         market_event::buy_event(inscription_id, seller, sender(ctx), price, inscription_price);
         return inscription
     }
