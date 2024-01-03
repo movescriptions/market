@@ -1,6 +1,7 @@
 // Copyright 2019-2022 SwiftNFT Systems
 // SPDX-License-Identifier: Apache-2.0
 module smartinscription::market {
+    use std::ascii;
     use std::ascii::{String, string};
     use sui::object::{Self, ID, UID};
     use sui::sui::SUI;
@@ -29,12 +30,17 @@ module smartinscription::market {
 
     const VERSION: u64 = 1;
 
+    const MAX_TICK_LENGTH: u64 = 32;
+    const MIN_TICK_LENGTH: u64 = 4;
+
     const EWrongVersion: u64 = 0;
     const EDoesNotExist: u64 = 1;
     const ENotAuthOperator: u64 = 2;
     const EInputCoin: u64 = 3;
     const ETickLength: u64 = 4;
     const EWrongMarket: u64 = 5;
+    const ErrorTickLengthInvaid: u64 = 6;
+
 
     /// listing info in the market
     struct Listing has key, store {
@@ -91,7 +97,9 @@ module smartinscription::market {
         market_house: &mut MarketplaceHouse,
         // clock: &Clock,
         ctx: &mut TxContext){
-        assert!(vector::length(&tick) == 4, ETickLength);
+        let tick_str: String = string(tick);
+        let tick_len: u64 = ascii::length(&tick_str);
+        assert!(MIN_TICK_LENGTH <= tick_len && tick_len <= MAX_TICK_LENGTH, ErrorTickLengthInvaid);
         let market = Marketplace {
             id: object::new(ctx),
             tick: string(tick),
