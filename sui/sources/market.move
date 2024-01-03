@@ -15,7 +15,7 @@ module market::market {
     use sui::balance;
     use sui::balance::Balance;
     use sui::clock::timestamp_ms;
-    use smartinscription::movescription::{Movescription, tick, amount, inject_sui};
+    use smartinscription::movescription::{Movescription, tick, amount, inject_sui, do_burn, TickRecord};
     use sui::clock::{Clock};
     use sui::dynamic_field;
     use market::critbit::{CritbitTree, find_leaf};
@@ -329,6 +329,89 @@ module market::market {
         return inscription
     }
 
+    //TODO
+    fun burn_floor_inscription(
+        market: &mut Marketplace,
+        tick_record: &mut TickRecord,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ){
+        let (from, _) = critbit::min_leaf(&market.listing);
+
+        let listing = critbit::borrow_mut_leaf_by_key(&mut market.listing, from);
+        let listings_count = vector::length(listing);
+        let count = 0;
+        let burn_balance = balance::value(&market.burn_balance);
+        let paid = coin::take(&mut market.burn_balance, burn_balance, ctx);
+
+        while (listings_count > count) {
+            let borrow_listing = vector::borrow(listing, count);
+            count = count + 1;
+            if (coin::value(&paid) >= borrow_listing.price) {
+                // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
+
+                let trade_info = dynamic_field::borrow_mut<u8, TradeInfo>(&mut market.id, 0u8);
+                trade_info.total_volume = trade_info.total_volume + coin::value(&paid);
+                if (timestamp_ms(clock) - trade_info.timestamp > 86400000) {
+                    trade_info.today_volume = coin::value(&paid);
+                    trade_info.yesterday_volume = trade_info.today_volume;
+                    trade_info.timestamp = timestamp_ms(clock);
+                }else {
+                    trade_info.today_volume = trade_info.today_volume + coin::value(&paid);
+                };
+                assert!(market.version == VERSION, EWrongVersion);
+
+
+                let Listing{
+                    id,
+                    price,
+                    seller,
+                    inscription_id,
+                    inscription_price,
+                    amt: _,
+                } = vector::remove(listing, count);
+                // if (vector::length(listing) == 0) {
+                //     // to simplify impl, always delete empty price level
+                //     let (find, leaf_index) = find_leaf(&mut market.listing, price);
+                //     if (find) {
+                //         vector::destroy_empty(critbit::remove_leaf_by_index(&mut market.listing, leaf_index));
+                //     }
+                // };
+
+                object::delete(id);
+                assert!(coin::value(&paid) >= price, EInputCoin);
+
+                let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
+                let surplus = price - trade_fee;
+                assert!(surplus > 0, EInputCoin);
+                let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
+                let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
+                let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
+                let lock_fee = trade_fee * trade_info.lock_ratio / TRADE_FEE_BASE_RATIO;
+
+                pay::split_and_transfer(&mut paid, surplus, seller, ctx);
+                let market_value = coin::split<SUI>(&mut paid, market_fee, ctx);
+                let burn_value = coin::split<SUI>(&mut paid, burn_fee, ctx);
+                let community_value = coin::split<SUI>(&mut paid, community_fee, ctx);
+
+                let lock_value = coin::split<SUI>(&mut paid, lock_fee, ctx);
+
+                balance::join(&mut market.balance, coin::into_balance(market_value));
+                balance::join(&mut market.burn_balance, coin::into_balance(burn_value));
+                balance::join(&mut market.community_balance, coin::into_balance(community_value));
+
+
+                let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
+                inject_sui(&mut inscription, lock_value);
+                market_event::buy_event(inscription_id, seller, sender(ctx), price, inscription_price);
+
+                let burn_inscription_coin = do_burn(tick_record, inscription, ctx);
+                coin::join(&mut paid, burn_inscription_coin)
+            }
+        };
+        balance::join(&mut market.burn_balance, coin::into_balance(paid));
+
+    }
 
 
     public entry fun withdraw_profits(
@@ -421,7 +504,8 @@ module market::market {
             let listing = critbit::borrow_leaf_by_key(&market.listing, from);
             let listings_count = vector::length(listing);
             while (listings_count > count) {
-                vector::borrow(listing, count);
+                let borrow_listing = vector::borrow(listing, count);
+                vector::push_back(&mut res, object::id(borrow_listing));
                 count = count + 1;
                 i = i + 1;
             };
