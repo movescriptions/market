@@ -98,6 +98,8 @@ module market::market {
         listing: CritbitTree<vector<Listing>>,
         /// bid cribit tree
         bid: CritbitTree<vector<Bid>>,
+        /// all listing info
+        listing_info: Table<address, ListingInfo>
     }
 
     struct TradeInfo has key, store {
@@ -110,6 +112,11 @@ module market::market {
         yesterday_volume: u64,
         today_volume: u64,
         total_volume: u64,
+    }
+
+    struct ListingInfo has key, store {
+        id: UID,
+        listing: Table<ID, bool>
     }
 
     struct AdminCap has key, store {
@@ -140,7 +147,8 @@ module market::market {
             community_balance: balance::zero<SUI>(),
             fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
-            bid: critbit::new(ctx)
+            bid: critbit::new(ctx),
+            listing_info: table::new(ctx)
         };
         let trade_info = TradeInfo{
             id: object::new(ctx),
@@ -151,7 +159,7 @@ module market::market {
             timestamp: timestamp_ms(clock),
             yesterday_volume: 0,
             today_volume: 0,
-            total_volume: 0
+            total_volume: 0,
         };
         table::add(&mut market_house.market_info, string(tick), object::id(&market));
         table_vec::push_back(&mut market_house.markets, string(tick));
@@ -171,7 +179,8 @@ module market::market {
             community_balance: balance::zero<SUI>(),
             fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
-            bid: critbit::new(ctx)
+            bid: critbit::new(ctx),
+            listing_info: table::new(ctx)
         };
         let market_info = table::new<String, ID>(ctx);
         let trade_info = TradeInfo{
@@ -183,7 +192,7 @@ module market::market {
             timestamp: 0,
             yesterday_volume: 0,
             today_volume: 0,
-            total_volume: 0
+            total_volume: 0,
         };
         table::add(&mut market_info, string(b"MOVE"), object::id(&market));
 
@@ -221,6 +230,7 @@ module market::market {
             inscription_price,
             amt: inscription_amount
         };
+        let listing_id = object::id(&listing);
         let (find_price, index)= critbit::find_leaf(&market.listing, inscription_price);
         if(find_price)  {
             vector::push_back(critbit::borrow_mut_leaf_by_index(&mut market.listing, index), listing);
@@ -228,6 +238,18 @@ module market::market {
             critbit::insert_leaf(&mut market.listing, inscription_price, vector::singleton(listing));
         };
         dof::add(&mut market.id, inscription_id, inscription);
+
+        if (table::contains(&market.listing_info, sender(ctx))){
+            let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+            table::add(&mut info.listing, listing_id, true);
+        }else {
+            let listing_info = table::new<ID, bool>(ctx);
+            table::add(&mut listing_info, listing_id, true);
+            table::add(&mut market.listing_info, sender(ctx), ListingInfo{
+                id: object::new(ctx),
+                listing: listing_info
+            });
+        };
         market_event::list_event(inscription_id, tx_context::sender(ctx), inscription_price, inscription_amount);
     }
 
@@ -254,6 +276,10 @@ module market::market {
         ctx: &TxContext
     ) {
         //Get the list from the collection
+
+
+        let listing = remove_listing(&mut market.listing, last_price, inscription_id);
+        let listing_id = object::id(&listing);
         let Listing{
             id,
             price,
@@ -261,7 +287,7 @@ module market::market {
             inscription_id,
             inscription_price: _,
             amt: _,
-        } = remove_listing(&mut market.listing, last_price, inscription_id);
+        } = listing;
         object::delete(id);
         //Determine the owner's authority
         assert!(sender(ctx) == seller, ENotAuthOperator);
@@ -269,6 +295,17 @@ module market::market {
         let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
         //emit event
         market_event::delisted_event(inscription_id, seller, price);
+
+        let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+        table::remove(&mut info.listing, listing_id);
+        if (table::length(&info.listing) == 0) {
+            let ListingInfo{
+                id,
+                listing: table_info
+            } = table::remove(&mut market.listing_info, sender(ctx));
+            table::destroy_empty(table_info);
+            object::delete(id);
+        };
 
         public_transfer(inscription, seller)
     }
@@ -299,6 +336,8 @@ module market::market {
             trade_info.today_volume = trade_info.today_volume + coin::value(paid);
         };
         assert!(market.version == VERSION, EWrongVersion);
+        let listing = remove_listing(&mut market.listing, last_price, inscription_id);
+        let listing_id = object::id(&listing);
         let Listing{
             id,
             price,
@@ -306,7 +345,7 @@ module market::market {
             inscription_id,
             inscription_price,
             amt: _,
-        } = remove_listing(&mut market.listing, last_price, inscription_id);
+        } = listing;
         object::delete(id);
         assert!(coin::value(paid) >= price, EInputCoin);
 
@@ -329,6 +368,16 @@ module market::market {
         balance::join(&mut market.burn_balance, coin::into_balance(burn_value));
         balance::join(&mut market.community_balance, coin::into_balance(community_value));
 
+        let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+        table::remove(&mut info.listing, listing_id);
+        if (table::length(&info.listing) == 0) {
+            let ListingInfo{
+                id,
+                listing: table_info
+            } = table::remove(&mut market.listing_info, sender(ctx));
+            table::destroy_empty(table_info);
+            object::delete(id);
+        };
 
         let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
         inject_sui(&mut inscription, lock_value);
