@@ -5,6 +5,8 @@ module market::market_event {
     use sui::event;
     use std::ascii::String;
 
+    friend market::market;
+
     struct MarketCreatedEvent has copy, drop {
         market_id: ID,
         owner: address,
@@ -47,14 +49,14 @@ module market::market_event {
         price: u64,
     }
 
-    public fun market_created_event(market_id: ID, owner: address) {
+    public(friend) fun market_created_event(market_id: ID, owner: address) {
         event::emit(MarketCreatedEvent {
             market_id,
             owner
         })
     }
 
-    public fun list_event(id: ID, operator: address, price: u64, inscription_amount: u64) {
+    public(friend) fun list_event(id: ID, operator: address, price: u64, inscription_amount: u64) {
         event::emit(ListedEvent {
             id,
             operator,
@@ -63,7 +65,7 @@ module market::market_event {
         })
     }
 
-    public fun buy_event(id: ID, from: address, to: address, price: u64, per_price: u64) {
+    public(friend) fun buy_event(id: ID, from: address, to: address, price: u64, per_price: u64) {
         event::emit(BuyEvent {
             id,
             from,
@@ -73,7 +75,7 @@ module market::market_event {
         })
     }
 
-    public fun collection_withdrawal(collection_id: ID, from: address, to: address, nft_type: String, ft_type: String, price: u64) {
+    public(friend) fun collection_withdrawal(collection_id: ID, from: address, to: address, nft_type: String, ft_type: String, price: u64) {
         event::emit(CollectionWithdrawalEvent {
             collection_id,
             from,
@@ -84,7 +86,7 @@ module market::market_event {
         })
     }
 
-    public fun delisted_event( id: ID, operator: address, price: u64) {
+    public(friend) fun delisted_event( id: ID, operator: address, price: u64) {
         event::emit(DeListedEvent {
             id,
             operator,
@@ -92,7 +94,7 @@ module market::market_event {
         })
     }
 
-    public fun modify_price_event(id: ID, operator: address, price: u64) {
+    public(friend) fun modify_price_event(id: ID, operator: address, price: u64) {
         event::emit(ModifyPriceEvent {
             id,
             operator,
