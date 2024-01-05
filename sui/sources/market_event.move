@@ -49,6 +49,25 @@ module market::market_event {
         price: u64,
     }
 
+    struct FloorPriceEvent has copy, drop {
+        /// The price of mist
+        price: vector<u64>,
+        /// The seller of mist
+        seller: vector<address>,
+        /// The ID of the mist
+        object_id: vector<ID>,
+        /// The price per mist
+        unit_price: vector<u64>,
+        /// the amp per mist
+        amt: vector<u64>,
+        /// the lock price
+        acc: vector<u64>
+    }
+
+    struct ListingInfoEvent has copy, drop {
+        id: ID
+    }
+
     public(friend) fun market_created_event(market_id: ID, owner: address) {
         event::emit(MarketCreatedEvent {
             market_id,
@@ -99,6 +118,30 @@ module market::market_event {
             id,
             operator,
             price
+        })
+    }
+
+    public(friend) fun floor_price_event(price: vector<u64>,
+                                         seller: vector<address>,
+                                         object_id: vector<ID>,
+                                         unit_price: vector<u64>,
+                                         amt: vector<u64>,
+                                         acc: vector<u64>
+
+    ){
+        event::emit(FloorPriceEvent {
+            price,
+            seller,
+            object_id,
+            unit_price,
+            amt,
+            acc
+        })
+    }
+
+    public(friend) fun listing_info_event(id: ID){
+        event::emit(ListingInfoEvent{
+            id
         })
     }
 

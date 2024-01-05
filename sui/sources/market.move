@@ -12,10 +12,11 @@ module market::market {
     use sui::pay;
     use sui::package;
     use std::vector;
+    use market::market_event::{floor_price_event, listing_info_event};
     use sui::balance;
     use sui::balance::Balance;
     use sui::clock::timestamp_ms;
-    use smartinscription::movescription::{Movescription, tick, amount, inject_sui, do_burn, TickRecord};
+    use smartinscription::movescription::{Movescription, tick, amount, inject_sui, do_burn, TickRecord, acc};
     use sui::clock::{Clock};
     use sui::dynamic_field;
     use market::critbit::{CritbitTree, find_leaf};
@@ -51,6 +52,8 @@ module market::market {
     const EWrongMarket: u64 = 4;
     const ErrorTickLengthInvaid: u64 = 5;
     const EInsufficientBurnCoin: u64 = 6;
+    const EPriceTooLow: u64 = 7;
+
 
 
     /// listing info in the market
@@ -65,7 +68,9 @@ module market::market {
         /// The price per inscription
         inscription_price: u64,
         /// the amp per inscription
-        amt: u64
+        amt: u64,
+        /// the lock sui acc
+        acc: u64
     }
 
     #[allow(unused_field)]
@@ -215,27 +220,31 @@ module market::market {
     public entry fun list(
         market: &mut Marketplace,
         inscription: Movescription,
-        price: u64,
+        unit_price: u64,
         ctx: &mut TxContext
     ) {
         assert!(market.tick == tick(&inscription), EWrongMarket);
+        // assert!(market.version == VERSION, EWrongVersion);
         let inscription_id = object::id(&inscription);
         let inscription_amount = amount(&inscription);
-        let inscription_price = price / inscription_amount;
+        let inscription_acc = acc(&inscription);
+        let price = unit_price * inscription_amount;
+        assert!(price > 0, EPriceTooLow);
         let listing = Listing {
             id: object::new(ctx),
             price,
             seller: sender(ctx),
             inscription_id,
-            inscription_price,
-            amt: inscription_amount
+            inscription_price: unit_price,
+            amt: inscription_amount,
+            acc: inscription_acc
         };
         let listing_id = object::id(&listing);
-        let (find_price, index)= critbit::find_leaf(&market.listing, inscription_price);
+        let (find_price, index)= critbit::find_leaf(&market.listing, unit_price);
         if(find_price)  {
             vector::push_back(critbit::borrow_mut_leaf_by_index(&mut market.listing, index), listing);
         }else {
-            critbit::insert_leaf(&mut market.listing, inscription_price, vector::singleton(listing));
+            critbit::insert_leaf(&mut market.listing, unit_price, vector::singleton(listing));
         };
         dof::add(&mut market.id, inscription_id, inscription);
 
@@ -250,7 +259,7 @@ module market::market {
                 listing: listing_info
             });
         };
-        market_event::list_event(inscription_id, tx_context::sender(ctx), inscription_price, inscription_amount);
+        market_event::list_event(inscription_id, tx_context::sender(ctx), unit_price, inscription_amount);
     }
 
 
@@ -277,6 +286,7 @@ module market::market {
     ) {
         //Get the list from the collection
 
+        // assert!(market.version == VERSION, EWrongVersion);
 
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
@@ -287,6 +297,7 @@ module market::market {
             inscription_id,
             inscription_price: _,
             amt: _,
+            acc: _
         } = listing;
         object::delete(id);
         //Determine the owner's authority
@@ -296,13 +307,13 @@ module market::market {
         //emit event
         market_event::delisted_event(inscription_id, seller, price);
 
-        let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+        let info = table::borrow_mut(&mut market.listing_info, seller);
         table::remove(&mut info.listing, listing_id);
         if (table::length(&info.listing) == 0) {
             let ListingInfo{
                 id,
                 listing: table_info
-            } = table::remove(&mut market.listing_info, sender(ctx));
+            } = table::remove(&mut market.listing_info, seller);
             table::destroy_empty(table_info);
             object::delete(id);
         };
@@ -345,13 +356,13 @@ module market::market {
             inscription_id,
             inscription_price,
             amt: _,
+            acc: _
         } = listing;
         object::delete(id);
         assert!(coin::value(paid) >= price, EInputCoin);
 
         let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
         let surplus = price - trade_fee;
-        assert!(surplus > 0, EInputCoin);
         let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
         let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
         let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
@@ -368,13 +379,13 @@ module market::market {
         balance::join(&mut market.burn_balance, coin::into_balance(burn_value));
         balance::join(&mut market.community_balance, coin::into_balance(community_value));
 
-        let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+        let info = table::borrow_mut(&mut market.listing_info, seller);
         table::remove(&mut info.listing, listing_id);
         if (table::length(&info.listing) == 0) {
             let ListingInfo{
                 id,
                 listing: table_info
-            } = table::remove(&mut market.listing_info, sender(ctx));
+            } = table::remove(&mut market.listing_info, seller);
             table::destroy_empty(table_info);
             object::delete(id);
         };
@@ -389,8 +400,9 @@ module market::market {
         market: &mut Marketplace,
         ctx: &mut TxContext
     ): (Coin<SUI>, BurnWitness){
-        let (from, _) = critbit::min_leaf(&market.listing);
+        assert!(market.version == VERSION, EWrongVersion);
 
+        let (from, _) = critbit::min_leaf(&market.listing);
         let listing = critbit::borrow_leaf_by_key(&market.listing, from);
         assert!(vector::length(listing) > 0, EDoesNotExist);
         let borrow_listing = vector::borrow(listing, 0);
@@ -508,17 +520,32 @@ module market::market {
 
     public fun floor_listing(market: &Marketplace, from: u64, start: u64): vector<ID> {
         let res = vector<ID>[];
+        let price = vector<u64>[];
+        let seller = vector<address>[];
+        let object_id = vector<ID>[];
+        let unit_price =  vector<u64>[];
+        let amt =  vector<u64>[];
+        let acc =  vector<u64>[];
+
         let i = 0;
         if (from == 0) {
             (from, _) = critbit::min_leaf(&market.listing);
         };
         let count = start;
-        while (i < start+50) {
+        while (i < 50) {
             let listing = critbit::borrow_leaf_by_key(&market.listing, from);
             let listings_count = vector::length(listing);
+
             while (listings_count > count) {
                 let borrow_listing = vector::borrow(listing, count);
                 vector::push_back(&mut res, object::id(borrow_listing));
+                vector::push_back(&mut price, borrow_listing.price);
+                vector::push_back(&mut seller, borrow_listing.seller);
+                vector::push_back(&mut object_id, borrow_listing.inscription_id);
+                vector::push_back(&mut unit_price, borrow_listing.inscription_price);
+                vector::push_back(&mut amt, borrow_listing.amt);
+                vector::push_back(&mut acc, borrow_listing.acc);
+
                 count = count + 1;
                 i = i + 1;
             };
@@ -527,9 +554,18 @@ module market::market {
             if (index != 0x8000000000000000) {
                 from = key;
             }else {
+                floor_price_event(price, seller, object_id, unit_price, amt, acc);
                 return res
             }
         };
+        floor_price_event(price, seller, object_id, unit_price, amt, acc);
         return res
+    }
+
+    public fun listing_info(market: &Marketplace, seller: address): ID {
+        let info = table::borrow(&market.listing_info, seller);
+        let info_id = object::id(&info.listing);
+        listing_info_event(info_id);
+        return info_id
     }
 }
