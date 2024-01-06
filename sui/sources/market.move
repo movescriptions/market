@@ -396,6 +396,78 @@ module market::market {
         return inscription
     }
 
+    #[lint_allow(self_transfer)]
+    public fun buy_with_check(
+        market: &mut Marketplace,
+        inscription_id: ID,
+        paid: &mut Coin<SUI>,
+        last_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        if (!check_listing_exist(&market.listing, last_price, inscription_id)) {
+            return
+        };
+        let trade_info = dynamic_field::borrow_mut<u8, TradeInfo>(&mut market.id, 0u8);
+        trade_info.total_volume = trade_info.total_volume + coin::value(paid);
+        if (timestamp_ms(clock) - trade_info.timestamp > 86400000) {
+            trade_info.today_volume = coin::value(paid);
+            trade_info.yesterday_volume = trade_info.today_volume;
+            trade_info.timestamp = timestamp_ms(clock);
+        }else {
+            trade_info.today_volume = trade_info.today_volume + coin::value(paid);
+        };
+        assert!(market.version == VERSION, EWrongVersion);
+        let listing = remove_listing(&mut market.listing, last_price, inscription_id);
+        let listing_id = object::id(&listing);
+        let Listing{
+            id,
+            price,
+            seller,
+            inscription_id,
+            inscription_price,
+            amt: _,
+            acc: _
+        } = listing;
+        object::delete(id);
+        assert!(coin::value(paid) >= price, EInputCoin);
+
+        let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
+        let surplus = price - trade_fee;
+        let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
+        let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
+        let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
+        let lock_fee = trade_fee * trade_info.lock_ratio / TRADE_FEE_BASE_RATIO;
+
+        pay::split_and_transfer(paid, surplus, seller, ctx);
+        let market_value = coin::split<SUI>(paid, market_fee, ctx);
+        let burn_value = coin::split<SUI>(paid, burn_fee, ctx);
+        let community_value = coin::split<SUI>(paid, community_fee, ctx);
+
+        let lock_value = coin::split<SUI>(paid, lock_fee, ctx);
+
+        balance::join(&mut market.balance, coin::into_balance(market_value));
+        balance::join(&mut market.burn_balance, coin::into_balance(burn_value));
+        balance::join(&mut market.community_balance, coin::into_balance(community_value));
+
+        let info = table::borrow_mut(&mut market.listing_info, seller);
+        table::remove(&mut info.listing, listing_id);
+        if (table::length(&info.listing) == 0) {
+            let ListingInfo{
+                id,
+                listing: table_info
+            } = table::remove(&mut market.listing_info, seller);
+            table::destroy_empty(table_info);
+            object::delete(id);
+        };
+
+        let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
+        inject_sui(&mut inscription, lock_value);
+        market_event::buy_event(inscription_id, seller, sender(ctx), price, inscription_price);
+        public_transfer(inscription, sender(ctx));
+        return
+    }
+
     public fun burn_floor_inscription(
         market: &mut Marketplace,
         ctx: &mut TxContext
@@ -489,6 +561,31 @@ module market::market {
         listing
     }
 
+    fun check_listing_exist(listings: &CritbitTree<vector<Listing>>, price: u64, inscription_id: ID): bool {
+        let (exist, _)= critbit::find_leaf(listings, price);
+        if (!exist) {
+            return false
+        };
+        let price_level = critbit::borrow_leaf_by_key(listings, price);
+
+        let index = 0;
+        let listings_count = vector::length(price_level);
+        while (listings_count > index) {
+            let listing = vector::borrow(price_level, index);
+            // on the same price level, we search for the specified NFT
+            if (inscription_id == listing.inscription_id) {
+                break
+            };
+
+            index = index + 1;
+        };
+        if (index >= listings_count) {
+            false
+        }else {
+            true
+        }
+    }
+
     fun remove_listing(listings: &mut CritbitTree<vector<Listing>>, price: u64, inscription_id: ID): Listing {
         let price_level = critbit::borrow_mut_leaf_by_key(listings, price);
 
@@ -548,6 +645,10 @@ module market::market {
 
                 count = count + 1;
                 i = i + 1;
+                if (i >= 50) {
+                    floor_price_event(price, seller, object_id, unit_price, amt, acc);
+                    return res
+                }
             };
             count = 0;
             let (key, index) = critbit::next_leaf(&market.listing, from);
