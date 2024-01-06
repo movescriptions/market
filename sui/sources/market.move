@@ -388,7 +388,7 @@ module market::market {
     public fun burn_floor_inscription(
         market: &mut Marketplace,
         ctx: &mut TxContext
-    ): (Coin<SUI>, BurnWitness){
+    ): BurnWitness{
         let (from, _) = critbit::min_leaf(&market.listing);
 
         let listing = critbit::borrow_leaf_by_key(&market.listing, from);
@@ -401,18 +401,19 @@ module market::market {
             last_price: borrow_listing.inscription_price
         };
         let coin = coin::take(&mut market.burn_balance, borrow_listing.price, ctx);
+        dof::add(&mut BurnWitness.id, b"burn_budget", coin);
                 // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
-        return (coin, burn_witness)
+        return burn_witness
     }
 
     public fun buy_with_burn_witness(
         market: &mut Marketplace,
         burn_witness: BurnWitness,
         ticket_record: &mut TickRecord,
-        paid: Coin<SUI>,
         clock: &Clock,
         ctx: &mut TxContext
     ){
+        let pay: Coin<SUI> = dof::remove<vector<u8>, Coin<SUI>>(&mut burn_witness.id, b"burn_budget");
         let BurnWitness{
             id,
             inscription_id,
