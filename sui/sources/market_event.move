@@ -40,7 +40,14 @@ module market::market_event {
         id: ID,
         operator: address,
         price: u64,
+    }
 
+    struct BurnFloorEvent has copy, drop {
+        id: ID,
+        sender: address,
+        amt: u64,
+        acc: u64,
+        cost_sui: u64
     }
 
     struct ModifyPriceEvent has copy, drop {
@@ -142,6 +149,16 @@ module market::market_event {
     public(friend) fun listing_info_event(id: ID){
         event::emit(ListingInfoEvent{
             id
+        })
+    }
+
+    public(friend) fun burn_floor_event(id: ID, sender: address, amt: u64, acc: u64, cost_sui: u64){
+        event::emit(BurnFloorEvent{
+            id,
+            sender,
+            amt,
+            acc,
+            cost_sui
         })
     }
 

@@ -12,7 +12,7 @@ module market::market {
     use sui::pay;
     use sui::package;
     use std::vector;
-    use market::market_event::{floor_price_event, listing_info_event};
+    use market::market_event::{floor_price_event, listing_info_event, burn_floor_event};
     use sui::balance;
     use sui::balance::Balance;
     use sui::clock::timestamp_ms;
@@ -31,7 +31,7 @@ module market::market {
     // One-Time-Witness for the module.
     struct MARKET has drop {}
 
-    const VERSION: u64 = 1;
+    const VERSION: u64 = 2;
 
     const MAX_TICK_LENGTH: u64 = 32;
     const MIN_TICK_LENGTH: u64 = 4;
@@ -53,6 +53,7 @@ module market::market {
     const ErrorTickLengthInvaid: u64 = 5;
     const EInsufficientBurnCoin: u64 = 6;
     const EPriceTooLow: u64 = 7;
+    const EWrongInscription: u64 = 8;
 
 
 
@@ -67,7 +68,7 @@ module market::market {
         inscription_id: ID,
         /// The price per inscription
         inscription_price: u64,
-        /// the amp per inscription
+        /// the amt per inscription
         amt: u64,
         /// the lock sui acc
         acc: u64
@@ -122,6 +123,17 @@ module market::market {
     struct ListingInfo has key, store {
         id: UID,
         listing: Table<ID, bool>
+    }
+
+    struct ListingDetail has store, drop {
+        /// The ID of the inscription
+        inscription_id: ID,
+        /// The price per inscription
+        unit_price: u64,
+        /// the amp per inscription
+        amt: u64,
+        /// the lock sui acc
+        acc: u64
     }
 
     struct AdminCap has key, store {
@@ -224,7 +236,7 @@ module market::market {
         ctx: &mut TxContext
     ) {
         assert!(market.tick == tick(&inscription), EWrongMarket);
-        // assert!(market.version == VERSION, EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
         let inscription_id = object::id(&inscription);
         let inscription_amount = amount(&inscription);
         let inscription_acc = acc(&inscription);
@@ -250,14 +262,30 @@ module market::market {
 
         if (table::contains(&market.listing_info, sender(ctx))){
             let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
+            let listing_detail = ListingDetail{
+                inscription_id,
+                unit_price,
+                amt: inscription_amount,
+                acc: inscription_acc
+            };
+            dynamic_field::add(&mut info.id, listing_id, listing_detail);
             table::add(&mut info.listing, listing_id, true);
         }else {
             let listing_info = table::new<ID, bool>(ctx);
             table::add(&mut listing_info, listing_id, true);
-            table::add(&mut market.listing_info, sender(ctx), ListingInfo{
+            let info = ListingInfo {
                 id: object::new(ctx),
                 listing: listing_info
-            });
+            };
+            let listing_detail = ListingDetail{
+                inscription_id,
+                unit_price,
+                amt: inscription_amount,
+                acc: inscription_acc
+            };
+            dynamic_field::add(&mut info.id, listing_id, listing_detail);
+            table::add(&mut market.listing_info, sender(ctx), info);
+
         };
         market_event::list_event(inscription_id, tx_context::sender(ctx), unit_price, inscription_amount);
     }
@@ -286,7 +314,7 @@ module market::market {
     ) {
         //Get the list from the collection
 
-        // assert!(market.version == VERSION, EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
 
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
@@ -309,6 +337,9 @@ module market::market {
 
         let info = table::borrow_mut(&mut market.listing_info, seller);
         table::remove(&mut info.listing, listing_id);
+        if (dynamic_field::exists_(&info.id, listing_id)) {
+            let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
+        };
         if (table::length(&info.listing) == 0) {
             let ListingInfo{
                 id,
@@ -381,6 +412,9 @@ module market::market {
 
         let info = table::borrow_mut(&mut market.listing_info, seller);
         table::remove(&mut info.listing, listing_id);
+        if (dynamic_field::exists_(&info.id, listing_id)) {
+            let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
+        };
         if (table::length(&info.listing) == 0) {
             let ListingInfo{
                 id,
@@ -452,6 +486,9 @@ module market::market {
 
         let info = table::borrow_mut(&mut market.listing_info, seller);
         table::remove(&mut info.listing, listing_id);
+        if (dynamic_field::exists_(&info.id, listing_id)) {
+            let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
+        };
         if (table::length(&info.listing) == 0) {
             let ListingInfo{
                 id,
@@ -484,6 +521,7 @@ module market::market {
             inscription_id: borrow_listing.inscription_id,
             last_price: borrow_listing.inscription_price
         };
+        dynamic_field::add(&mut burn_witness.id, 0u8, borrow_listing.amt);
         let coin = coin::take(&mut market.burn_balance, borrow_listing.price, ctx);
                 // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
         return (coin, burn_witness)
@@ -497,13 +535,17 @@ module market::market {
         clock: &Clock,
         ctx: &mut TxContext
     ){
+        let inscription_amt = dynamic_field::remove<u8, u64>(&mut burn_witness.id, 0u8);
         let BurnWitness{
             id,
             inscription_id,
             last_price
         } = burn_witness;
+        let cost_sui = coin::value(&paid);
         object::delete(id);
         let inscription= buy(market, inscription_id, &mut paid, last_price, clock, ctx);
+        assert!(inscription_amt == amount(&inscription), EWrongInscription);
+        burn_floor_event(inscription_id, sender(ctx), amount(&inscription), acc(&inscription), cost_sui);
         let acc_coin = do_burn(ticket_record, inscription, ctx);
         coin::join(&mut paid, acc_coin);
         balance::join(&mut market.burn_balance, coin::into_balance(paid));
@@ -538,6 +580,11 @@ module market::market {
         receiver: address,
     ){
         transfer::public_transfer(admin, receiver);
+    }
+
+    public entry fun migrate_marketplace(marketplace: &mut Marketplace) {
+        assert!(marketplace.version <= VERSION, EWrongVersion);
+        marketplace.version = VERSION;
     }
 
     #[allow(unused_function)]
@@ -666,6 +713,13 @@ module market::market {
     public fun listing_info(market: &Marketplace, seller: address): ID {
         let info = table::borrow(&market.listing_info, seller);
         let info_id = object::id(&info.listing);
+        listing_info_event(info_id);
+        return info_id
+    }
+
+    public fun listing_detail(market: &Marketplace, seller: address): ID {
+        let info = table::borrow(&market.listing_info, seller);
+        let info_id = object::id(info);
         listing_info_event(info_id);
         return info_id
     }
