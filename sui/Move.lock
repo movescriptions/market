@@ -16,7 +16,7 @@ source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainn
 
 [[move.package]]
 name = "SmartInscription"
-source = { local = "../../move-market/movescriptions/sui" }
+source = { git = "https://github.com/movescriptions/movescriptions.git", rev = "main", subdir = "sui" }
 
 dependencies = [
   { name = "Sui" },

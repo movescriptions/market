@@ -1,4 +1,4 @@
-// Copyright 2019-2022 SwiftNFT Systems
+// Copyright 2023-2025 MRC20.APP Systems
 // SPDX-License-Identifier: Apache-2.0
 module market::market {
     use std::ascii;
@@ -54,7 +54,6 @@ module market::market {
     const EInsufficientBurnCoin: u64 = 6;
     const EPriceTooLow: u64 = 7;
     const EWrongInscription: u64 = 8;
-
 
 
     /// listing info in the market
@@ -146,7 +145,7 @@ module market::market {
         markets: TableVec<String>,
     }
 
-    struct BurnInfo has key, store{
+    struct BurnInfo has key, store {
         id: UID,
         tick: String,
         amt: u64,
@@ -158,7 +157,7 @@ module market::market {
         tick: vector<u8>,
         market_house: &mut MarketplaceHouse,
         clock: &Clock,
-        ctx: &mut TxContext){
+        ctx: &mut TxContext) {
         let tick_str: String = string(tick);
         let tick_len: u64 = ascii::length(&tick_str);
         assert!(MIN_TICK_LENGTH <= tick_len && tick_len <= MAX_TICK_LENGTH, ErrorTickLengthInvaid);
@@ -174,7 +173,7 @@ module market::market {
             bid: critbit::new(ctx),
             listing_info: table::new(ctx)
         };
-        let trade_info = TradeInfo{
+        let trade_info = TradeInfo {
             id: object::new(ctx),
             tick: string(tick),
             burn_ratio: BURN_FEE_RATIO,
@@ -207,7 +206,7 @@ module market::market {
             listing_info: table::new(ctx)
         };
         let market_info = table::new<String, ID>(ctx);
-        let trade_info = TradeInfo{
+        let trade_info = TradeInfo {
             id: object::new(ctx),
             tick: string(b"MOVE"),
             burn_ratio: BURN_FEE_RATIO,
@@ -259,17 +258,17 @@ module market::market {
             acc: inscription_acc
         };
         let listing_id = object::id(&listing);
-        let (find_price, index)= critbit::find_leaf(&market.listing, unit_price);
-        if(find_price)  {
+        let (find_price, index) = critbit::find_leaf(&market.listing, unit_price);
+        if (find_price) {
             vector::push_back(critbit::borrow_mut_leaf_by_index(&mut market.listing, index), listing);
         }else {
             critbit::insert_leaf(&mut market.listing, unit_price, vector::singleton(listing));
         };
         dof::add(&mut market.id, inscription_id, inscription);
 
-        if (table::contains(&market.listing_info, sender(ctx))){
+        if (table::contains(&market.listing_info, sender(ctx))) {
             let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
-            let listing_detail = ListingDetail{
+            let listing_detail = ListingDetail {
                 inscription_id,
                 unit_price,
                 amt: inscription_amount,
@@ -284,7 +283,7 @@ module market::market {
                 id: object::new(ctx),
                 listing: listing_info
             };
-            let listing_detail = ListingDetail{
+            let listing_detail = ListingDetail {
                 inscription_id,
                 unit_price,
                 amt: inscription_amount,
@@ -292,7 +291,6 @@ module market::market {
             };
             dynamic_field::add(&mut info.id, listing_id, listing_detail);
             table::add(&mut market.listing_info, sender(ctx), info);
-
         };
         market_event::list_event(inscription_id, tx_context::sender(ctx), unit_price, inscription_amount);
     }
@@ -325,7 +323,7 @@ module market::market {
 
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -348,7 +346,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -387,7 +385,7 @@ module market::market {
         assert!(market.version == VERSION, EWrongVersion);
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -423,7 +421,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -461,7 +459,7 @@ module market::market {
         assert!(market.version == VERSION, EWrongVersion);
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -497,7 +495,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -515,7 +513,7 @@ module market::market {
     public fun burn_floor_inscription(
         market: &mut Marketplace,
         ctx: &mut TxContext
-    ): (Coin<SUI>, BurnWitness){
+    ): (Coin<SUI>, BurnWitness) {
         assert!(market.version == VERSION, EWrongVersion);
 
         let (from, _) = critbit::min_leaf(&market.listing);
@@ -530,7 +528,7 @@ module market::market {
         };
         dynamic_field::add(&mut burn_witness.id, 0u8, borrow_listing.amt);
         let coin = coin::take(&mut market.burn_balance, borrow_listing.price, ctx);
-                // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
+        // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
         return (coin, burn_witness)
     }
 
@@ -541,26 +539,26 @@ module market::market {
         paid: Coin<SUI>,
         clock: &Clock,
         ctx: &mut TxContext
-    ){
+    ) {
         let inscription_amt = dynamic_field::remove<u8, u64>(&mut burn_witness.id, 0u8);
-        let BurnWitness{
+        let BurnWitness {
             id,
             inscription_id,
             last_price
         } = burn_witness;
         let cost_sui = coin::value(&paid);
         object::delete(id);
-        let inscription= buy(market, inscription_id, &mut paid, last_price, clock, ctx);
+        let inscription = buy(market, inscription_id, &mut paid, last_price, clock, ctx);
         assert!(inscription_amt == amount(&inscription), EWrongInscription);
-        if (!dynamic_field::exists_(&market.id, b"burn_info")){
-            dynamic_field::add(&mut market.id, b"burn_info", BurnInfo{
+        if (!dynamic_field::exists_(&market.id, b"burn_info")) {
+            dynamic_field::add(&mut market.id, b"burn_info", BurnInfo {
                 id: object::new(ctx),
                 tick: market.tick,
                 amt: 0,
                 cost_sui: 0
             })
         }else {
-            let burn_info= dynamic_field::borrow_mut<vector<u8>, BurnInfo>(&mut market.id, b"burn_info");
+            let burn_info = dynamic_field::borrow_mut<vector<u8>, BurnInfo>(&mut market.id, b"burn_info");
             burn_info.cost_sui = burn_info.cost_sui + cost_sui;
             burn_info.amt = burn_info.amt + amount(&inscription)
         };
@@ -597,7 +595,7 @@ module market::market {
     public entry fun change_admin(
         admin: AdminCap,
         receiver: address,
-    ){
+    ) {
         transfer::public_transfer(admin, receiver);
     }
 
@@ -628,7 +626,7 @@ module market::market {
     }
 
     fun check_listing_exist(listings: &CritbitTree<vector<Listing>>, price: u64, inscription_id: ID): bool {
-        let (exist, _)= critbit::find_leaf(listings, price);
+        let (exist, _) = critbit::find_leaf(listings, price);
         if (!exist) {
             return false
         };
@@ -686,9 +684,9 @@ module market::market {
         let price = vector<u64>[];
         let seller = vector<address>[];
         let object_id = vector<ID>[];
-        let unit_price =  vector<u64>[];
-        let amt =  vector<u64>[];
-        let acc =  vector<u64>[];
+        let unit_price = vector<u64>[];
+        let amt = vector<u64>[];
+        let acc = vector<u64>[];
 
         let i = 0;
         if (from == 0) {
