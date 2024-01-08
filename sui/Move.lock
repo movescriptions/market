@@ -2,7 +2,7 @@
 
 [move]
 version = 0
-manifest_digest = "DB2743B1E17D3A9ED31E4D6799D13F4BF4B85EFF3CD0BB0570F2C944FEA43315"
+manifest_digest = "BBF6991624ED6469B46F5E255F834232CA70ACD539F6B8FC5D49EDDD276EA9B5"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 
 dependencies = [
@@ -16,7 +16,7 @@ source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainn
 
 [[move.package]]
 name = "SmartInscription"
-source = { git = "https://github.com/movescriptions/movescriptions.git", rev = "main", subdir = "sui" }
+source = { local = "../../move-market/movescriptions/sui" }
 
 dependencies = [
   { name = "Sui" },
