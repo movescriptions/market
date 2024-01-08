@@ -146,6 +146,13 @@ module market::market {
         markets: TableVec<String>,
     }
 
+    struct BurnInfo has key, store{
+        id: UID,
+        tick: String,
+        amt: u64,
+        cost_sui: u64
+    }
+
 
     public entry fun createMarket(
         tick: vector<u8>,
@@ -545,6 +552,18 @@ module market::market {
         object::delete(id);
         let inscription= buy(market, inscription_id, &mut paid, last_price, clock, ctx);
         assert!(inscription_amt == amount(&inscription), EWrongInscription);
+        if (!dynamic_field::exists_(&market.id, b"burn_info")){
+            dynamic_field::add(&mut market.id, b"burn_info", BurnInfo{
+                id: object::new(ctx),
+                tick: market.tick,
+                amt: 0,
+                cost_sui: 0
+            })
+        }else {
+            let burn_info= dynamic_field::borrow_mut<vector<u8>, BurnInfo>(&mut market.id, b"burn_info");
+            burn_info.cost_sui = burn_info.cost_sui + cost_sui;
+            burn_info.amt = burn_info.amt + amount(&inscription)
+        };
         burn_floor_event(inscription_id, sender(ctx), amount(&inscription), acc(&inscription), cost_sui);
         let acc_coin = do_burn(ticket_record, inscription, ctx);
         coin::join(&mut paid, acc_coin);

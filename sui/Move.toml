@@ -1,10 +1,10 @@
 [package]
 name = "market"
 version = "0.0.1"
-published-at = "0xb88f9149c55d6314b7ae436a730cfbf3a5d53522f37e2d56288531bb8adc7071"
+published-at = "0xd51be8bab4ba8ddc464dad54a70dc1ef68512de990c9e02254081392e9345ecc"
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework__mainnet" }
 SmartInscription = { local = "../../move-market/movescriptions/sui", rev = "main"}
 
 [addresses]
