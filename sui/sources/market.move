@@ -31,30 +31,29 @@ module market::market {
     // One-Time-Witness for the module.
     struct MARKET has drop {}
 
-    constVERSION: u64 = 2;
+    const VERSION: u64 = 2;
 
-    constMAX_TICK_LENGTH: u64 = 32;
-    constMIN_TICK_LENGTH: u64 = 4;
+    const MAX_TICK_LENGTH: u64 = 32;
+    const MIN_TICK_LENGTH: u64 = 4;
 
-    constBURN_FEE_RATIO: u64 = 125;
-    constCOMMUNITY_FEE_RATIO: u64 = 250;
-    constLOCK_FEE_RATIO: u64 = 125;
-    constMARKET_FEE_RATIO: u64 = 500;
+    const BURN_FEE_RATIO: u64 = 125;
+    const COMMUNITY_FEE_RATIO: u64 = 250;
+    const LOCK_FEE_RATIO: u64 = 125;
+    const MARKET_FEE_RATIO: u64 = 500;
 
-    constTRADE_FEE_BASE_RATIO: u64 = 1000;
-    constBASE_MARKET_FEE: u64 = 20;
+    const TRADE_FEE_BASE_RATIO: u64 = 1000;
+    const BASE_MARKET_FEE: u64 = 20;
 
 
-    constEWrongVersion: u64 = 0;
-    constEDoesNotExist: u64 = 1;
-    constENotAuthOperator: u64 = 2;
-    constEInputCoin: u64 = 3;
-    constEWrongMarket: u64 = 4;
-    constErrorTickLengthInvaid: u64 = 5;
-    constEInsufficientBurnCoin: u64 = 6;
-    constEPriceTooLow: u64 = 7;
-    constEWrongInscription: u64 = 8;
-
+    const EWrongVersion: u64 = 0;
+    const EDoesNotExist: u64 = 1;
+    const ENotAuthOperator: u64 = 2;
+    const EInputCoin: u64 = 3;
+    const EWrongMarket: u64 = 4;
+    const ErrorTickLengthInvaid: u64 = 5;
+    const EInsufficientBurnCoin: u64 = 6;
+    const EPriceTooLow: u64 = 7;
+    const EWrongInscription: u64 = 8;
 
 
     /// listing info in the market
@@ -146,7 +145,7 @@ module market::market {
         markets: TableVec<String>,
     }
 
-    struct BurnInfo has key, store{
+    struct BurnInfo has key, store {
         id: UID,
         tick: String,
         amt: u64,
@@ -158,28 +157,28 @@ module market::market {
         tick: vector<u8>,
         market_house: &mut MarketplaceHouse,
         clock: &Clock,
-        ctx: &mut TxContext){
+        ctx: &mut TxContext) {
         let tick_str: String = string(tick);
         let tick_len: u64 = ascii::length(&tick_str);
-        assert!(MIN_TICK_LENGTH<= tick_len && tick_len <=MAX_TICK_LENGTH,ErrorTickLengthInvaid);
+        assert!(MIN_TICK_LENGTH <= tick_len && tick_len <= MAX_TICK_LENGTH, ErrorTickLengthInvaid);
         let market = Marketplace {
             id: object::new(ctx),
             tick: string(tick),
-            version:VERSION,
+            version: VERSION,
             balance: balance::zero<SUI>(),
             burn_balance: balance::zero<SUI>(),
             community_balance: balance::zero<SUI>(),
-            fee:BASE_MARKET_FEE,
+            fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
             bid: critbit::new(ctx),
             listing_info: table::new(ctx)
         };
-        let trade_info = TradeInfo{
+        let trade_info = TradeInfo {
             id: object::new(ctx),
             tick: string(tick),
-            burn_ratio:BURN_FEE_RATIO,
-            community_ratio:COMMUNITY_FEE_RATIO,
-            lock_ratio:LOCK_FEE_RATIO,
+            burn_ratio: BURN_FEE_RATIO,
+            community_ratio: COMMUNITY_FEE_RATIO,
+            lock_ratio: LOCK_FEE_RATIO,
             timestamp: timestamp_ms(clock),
             yesterday_volume: 0,
             today_volume: 0,
@@ -197,22 +196,22 @@ module market::market {
         let market = Marketplace {
             id: object::new(ctx),
             tick: string(b"MOVE"),
-            version:VERSION,
+            version: VERSION,
             balance: balance::zero<SUI>(),
             burn_balance: balance::zero<SUI>(),
             community_balance: balance::zero<SUI>(),
-            fee:BASE_MARKET_FEE,
+            fee: BASE_MARKET_FEE,
             listing: critbit::new(ctx),
             bid: critbit::new(ctx),
             listing_info: table::new(ctx)
         };
         let market_info = table::new<String, ID>(ctx);
-        let trade_info = TradeInfo{
+        let trade_info = TradeInfo {
             id: object::new(ctx),
             tick: string(b"MOVE"),
-            burn_ratio:BURN_FEE_RATIO,
-            community_ratio:COMMUNITY_FEE_RATIO,
-            lock_ratio:LOCK_FEE_RATIO,
+            burn_ratio: BURN_FEE_RATIO,
+            community_ratio: COMMUNITY_FEE_RATIO,
+            lock_ratio: LOCK_FEE_RATIO,
             timestamp: 0,
             yesterday_volume: 0,
             today_volume: 0,
@@ -242,13 +241,13 @@ module market::market {
         unit_price: u64,
         ctx: &mut TxContext
     ) {
-        assert!(market.tick == tick(&inscription),EWrongMarket);
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.tick == tick(&inscription), EWrongMarket);
+        assert!(market.version == VERSION, EWrongVersion);
         let inscription_id = object::id(&inscription);
         let inscription_amount = amount(&inscription);
         let inscription_acc = acc(&inscription);
         let price = unit_price * inscription_amount;
-        assert!(price > 0,EPriceTooLow);
+        assert!(price > 0, EPriceTooLow);
         let listing = Listing {
             id: object::new(ctx),
             price,
@@ -259,17 +258,17 @@ module market::market {
             acc: inscription_acc
         };
         let listing_id = object::id(&listing);
-        let (find_price, index)= critbit::find_leaf(&market.listing, unit_price);
-        if(find_price)  {
+        let (find_price, index) = critbit::find_leaf(&market.listing, unit_price);
+        if (find_price) {
             vector::push_back(critbit::borrow_mut_leaf_by_index(&mut market.listing, index), listing);
         }else {
             critbit::insert_leaf(&mut market.listing, unit_price, vector::singleton(listing));
         };
         dof::add(&mut market.id, inscription_id, inscription);
 
-        if (table::contains(&market.listing_info, sender(ctx))){
+        if (table::contains(&market.listing_info, sender(ctx))) {
             let info = table::borrow_mut(&mut market.listing_info, sender(ctx));
-            let listing_detail = ListingDetail{
+            let listing_detail = ListingDetail {
                 inscription_id,
                 unit_price,
                 amt: inscription_amount,
@@ -284,7 +283,7 @@ module market::market {
                 id: object::new(ctx),
                 listing: listing_info
             };
-            let listing_detail = ListingDetail{
+            let listing_detail = ListingDetail {
                 inscription_id,
                 unit_price,
                 amt: inscription_amount,
@@ -292,7 +291,6 @@ module market::market {
             };
             dynamic_field::add(&mut info.id, listing_id, listing_detail);
             table::add(&mut market.listing_info, sender(ctx), info);
-
         };
         market_event::list_event(inscription_id, tx_context::sender(ctx), unit_price, inscription_amount);
     }
@@ -321,11 +319,11 @@ module market::market {
     ) {
         //Get the list from the collection
 
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
 
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -336,7 +334,7 @@ module market::market {
         } = listing;
         object::delete(id);
         //Determine the owner's authority
-        assert!(sender(ctx) == seller,ENotAuthOperator);
+        assert!(sender(ctx) == seller, ENotAuthOperator);
 
         let inscription = dof::remove<ID, Movescription>(&mut market.id, inscription_id);
         //emit event
@@ -348,7 +346,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -384,10 +382,10 @@ module market::market {
         }else {
             trade_info.today_volume = trade_info.today_volume + coin::value(paid);
         };
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -397,14 +395,14 @@ module market::market {
             acc: _
         } = listing;
         object::delete(id);
-        assert!(coin::value(paid) >= price,EInputCoin);
+        assert!(coin::value(paid) >= price, EInputCoin);
 
-        let trade_fee = price * market.fee /TRADE_FEE_BASE_RATIO;
+        let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
         let surplus = price - trade_fee;
-        let market_fee = trade_fee *MARKET_FEE_RATIO/TRADE_FEE_BASE_RATIO;
-        let burn_fee = trade_fee * trade_info.burn_ratio /TRADE_FEE_BASE_RATIO;
-        let community_fee = trade_fee * trade_info.community_ratio /TRADE_FEE_BASE_RATIO;
-        let lock_fee = trade_fee * trade_info.lock_ratio /TRADE_FEE_BASE_RATIO;
+        let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
+        let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
+        let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
+        let lock_fee = trade_fee * trade_info.lock_ratio / TRADE_FEE_BASE_RATIO;
 
         pay::split_and_transfer(paid, surplus, seller, ctx);
         let market_value = coin::split<SUI>(paid, market_fee, ctx);
@@ -423,7 +421,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -458,10 +456,10 @@ module market::market {
         }else {
             trade_info.today_volume = trade_info.today_volume + coin::value(paid);
         };
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
         let listing = remove_listing(&mut market.listing, last_price, inscription_id);
         let listing_id = object::id(&listing);
-        let Listing{
+        let Listing {
             id,
             price,
             seller,
@@ -471,14 +469,14 @@ module market::market {
             acc: _
         } = listing;
         object::delete(id);
-        assert!(coin::value(paid) >= price,EInputCoin);
+        assert!(coin::value(paid) >= price, EInputCoin);
 
-        let trade_fee = price * market.fee /TRADE_FEE_BASE_RATIO;
+        let trade_fee = price * market.fee / TRADE_FEE_BASE_RATIO;
         let surplus = price - trade_fee;
-        let market_fee = trade_fee *MARKET_FEE_RATIO/TRADE_FEE_BASE_RATIO;
-        let burn_fee = trade_fee * trade_info.burn_ratio /TRADE_FEE_BASE_RATIO;
-        let community_fee = trade_fee * trade_info.community_ratio /TRADE_FEE_BASE_RATIO;
-        let lock_fee = trade_fee * trade_info.lock_ratio /TRADE_FEE_BASE_RATIO;
+        let market_fee = trade_fee * MARKET_FEE_RATIO / TRADE_FEE_BASE_RATIO;
+        let burn_fee = trade_fee * trade_info.burn_ratio / TRADE_FEE_BASE_RATIO;
+        let community_fee = trade_fee * trade_info.community_ratio / TRADE_FEE_BASE_RATIO;
+        let lock_fee = trade_fee * trade_info.lock_ratio / TRADE_FEE_BASE_RATIO;
 
         pay::split_and_transfer(paid, surplus, seller, ctx);
         let market_value = coin::split<SUI>(paid, market_fee, ctx);
@@ -497,7 +495,7 @@ module market::market {
             let _ss = dynamic_field::remove<ID, ListingDetail>(&mut info.id, listing_id);
         };
         if (table::length(&info.listing) == 0) {
-            let ListingInfo{
+            let ListingInfo {
                 id,
                 listing: table_info
             } = table::remove(&mut market.listing_info, seller);
@@ -515,14 +513,14 @@ module market::market {
     public fun burn_floor_inscription(
         market: &mut Marketplace,
         ctx: &mut TxContext
-    ): (Coin<SUI>, BurnWitness){
-        assert!(market.version ==VERSION,EWrongVersion);
+    ): (Coin<SUI>, BurnWitness) {
+        assert!(market.version == VERSION, EWrongVersion);
 
         let (from, _) = critbit::min_leaf(&market.listing);
         let listing = critbit::borrow_leaf_by_key(&market.listing, from);
-        assert!(vector::length(listing) > 0,EDoesNotExist);
+        assert!(vector::length(listing) > 0, EDoesNotExist);
         let borrow_listing = vector::borrow(listing, 0);
-        assert!(balance::value(&market.burn_balance) >= borrow_listing.price,EInsufficientBurnCoin);
+        assert!(balance::value(&market.burn_balance) >= borrow_listing.price, EInsufficientBurnCoin);
         let burn_witness = BurnWitness {
             id: object::new(ctx),
             inscription_id: borrow_listing.inscription_id,
@@ -541,26 +539,26 @@ module market::market {
         paid: Coin<SUI>,
         clock: &Clock,
         ctx: &mut TxContext
-    ){
+    ) {
         let inscription_amt = dynamic_field::remove<u8, u64>(&mut burn_witness.id, 0u8);
-        let BurnWitness{
+        let BurnWitness {
             id,
             inscription_id,
             last_price
         } = burn_witness;
         let cost_sui = coin::value(&paid);
         object::delete(id);
-        let inscription= buy(market, inscription_id, &mut paid, last_price, clock, ctx);
-        assert!(inscription_amt == amount(&inscription),EWrongInscription);
-        if (!dynamic_field::exists_(&market.id, b"burn_info")){
-            dynamic_field::add(&mut market.id, b"burn_info", BurnInfo{
+        let inscription = buy(market, inscription_id, &mut paid, last_price, clock, ctx);
+        assert!(inscription_amt == amount(&inscription), EWrongInscription);
+        if (!dynamic_field::exists_(&market.id, b"burn_info")) {
+            dynamic_field::add(&mut market.id, b"burn_info", BurnInfo {
                 id: object::new(ctx),
                 tick: market.tick,
                 amt: 0,
                 cost_sui: 0
             })
         }else {
-            let burn_info= dynamic_field::borrow_mut<vector<u8>, BurnInfo>(&mut market.id, b"burn_info");
+            let burn_info = dynamic_field::borrow_mut<vector<u8>, BurnInfo>(&mut market.id, b"burn_info");
             burn_info.cost_sui = burn_info.cost_sui + cost_sui;
             burn_info.amt = burn_info.amt + amount(&inscription)
         };
@@ -577,7 +575,7 @@ module market::market {
         receiver: address,
         ctx: &mut TxContext
     ) {
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
         let balances = balance::value(&market.balance);
         let coins = balance::split(&mut market.balance, balances);
         transfer::public_transfer(coin::from_balance(coins, ctx), receiver);
@@ -590,20 +588,20 @@ module market::market {
         fee: u64,
         _ctx: &mut TxContext
     ) {
-        assert!(market.version ==VERSION,EWrongVersion);
+        assert!(market.version == VERSION, EWrongVersion);
         market.fee = fee
     }
 
     public entry fun change_admin(
         admin: AdminCap,
         receiver: address,
-    ){
+    ) {
         transfer::public_transfer(admin, receiver);
     }
 
     public entry fun migrate_marketplace(marketplace: &mut Marketplace) {
-        assert!(marketplace.version <=VERSION,EWrongVersion);
-        marketplace.version =VERSION;
+        assert!(marketplace.version <= VERSION, EWrongVersion);
+        marketplace.version = VERSION;
     }
 
     #[allow(unused_function)]
@@ -622,13 +620,13 @@ module market::market {
             index = index + 1;
         };
 
-        assert!(index < listings_count,EDoesNotExist);
+        assert!(index < listings_count, EDoesNotExist);
         let listing = vector::borrow_mut(price_level, index);
         listing
     }
 
     fun check_listing_exist(listings: &CritbitTree<vector<Listing>>, price: u64, inscription_id: ID): bool {
-        let (exist, _)= critbit::find_leaf(listings, price);
+        let (exist, _) = critbit::find_leaf(listings, price);
         if (!exist) {
             return false
         };
@@ -667,7 +665,7 @@ module market::market {
             index = index + 1;
         };
 
-        assert!(index < listings_count,EDoesNotExist);
+        assert!(index < listings_count, EDoesNotExist);
 
         let listing = vector::remove(price_level, index);
         if (vector::length(price_level) == 0) {
@@ -686,9 +684,9 @@ module market::market {
         let price = vector<u64>[];
         let seller = vector<address>[];
         let object_id = vector<ID>[];
-        let unit_price =  vector<u64>[];
-        let amt =  vector<u64>[];
-        let acc =  vector<u64>[];
+        let unit_price = vector<u64>[];
+        let amt = vector<u64>[];
+        let acc = vector<u64>[];
 
         let i = 0;
         if (from == 0) {

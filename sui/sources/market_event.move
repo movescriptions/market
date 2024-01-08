@@ -101,7 +101,14 @@ module market::market_event {
         })
     }
 
-    public(friend) fun collection_withdrawal(collection_id: ID, from: address, to: address, nft_type: String, ft_type: String, price: u64) {
+    public(friend) fun collection_withdrawal(
+        collection_id: ID,
+        from: address,
+        to: address,
+        nft_type: String,
+        ft_type: String,
+        price: u64
+    ) {
         event::emit(CollectionWithdrawalEvent {
             collection_id,
             from,
@@ -112,7 +119,7 @@ module market::market_event {
         })
     }
 
-    public(friend) fun delisted_event( id: ID, operator: address, price: u64) {
+    public(friend) fun delisted_event(id: ID, operator: address, price: u64) {
         event::emit(DeListedEvent {
             id,
             operator,
@@ -134,8 +141,7 @@ module market::market_event {
                                          unit_price: vector<u64>,
                                          amt: vector<u64>,
                                          acc: vector<u64>
-
-    ){
+    ) {
         event::emit(FloorPriceEvent {
             price,
             seller,
@@ -146,14 +152,14 @@ module market::market_event {
         })
     }
 
-    public(friend) fun listing_info_event(id: ID){
-        event::emit(ListingInfoEvent{
+    public(friend) fun listing_info_event(id: ID) {
+        event::emit(ListingInfoEvent {
             id
         })
     }
 
-    public(friend) fun burn_floor_event(id: ID, sender: address, amt: u64, acc: u64, cost_sui: u64){
-        event::emit(BurnFloorEvent{
+    public(friend) fun burn_floor_event(id: ID, sender: address, amt: u64, acc: u64, cost_sui: u64) {
+        event::emit(BurnFloorEvent {
             id,
             sender,
             amt,
@@ -161,5 +167,4 @@ module market::market_event {
             cost_sui
         })
     }
-
 }
