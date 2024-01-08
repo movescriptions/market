@@ -510,7 +510,6 @@ module market::market {
         ctx: &mut TxContext
     ): (Coin<SUI>, BurnWitness){
         assert!(market.version == VERSION, EWrongVersion);
-
         let (from, _) = critbit::min_leaf(&market.listing);
         let listing = critbit::borrow_leaf_by_key(&market.listing, from);
         assert!(vector::length(listing) > 0, EDoesNotExist);
@@ -523,15 +522,15 @@ module market::market {
         };
         dynamic_field::add(&mut burn_witness.id, 0u8, borrow_listing.amt);
         let coin = coin::take(&mut market.burn_balance, borrow_listing.price, ctx);
+        dof::add(&mut BurnWitness.id, b"burn_budget", coin);
                 // let inscription= buy(market, borrow_listing.inscription_id, &mut coin, borrow_listing.price, clock, ctx);
-        return (coin, burn_witness)
+        return burn_witness
     }
 
     public fun buy_with_burn_witness(
         market: &mut Marketplace,
         burn_witness: BurnWitness,
         ticket_record: &mut TickRecord,
-        paid: Coin<SUI>,
         clock: &Clock,
         ctx: &mut TxContext
     ){
